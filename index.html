@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mes horaires de passage — Échappée Belle 2026</title>
+<meta name="description" content="Estimation des heures de passage de Christophe sur l'Échappée Belle Intégrale 2026, pour les accompagnateurs." />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>⛰️</text></svg>" />
+<link rel="stylesheet" href="vendor/leaflet.css" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="wrap">
+
+  <header class="head">
+    <h1>Mes horaires de passage</h1>
+    <p class="sub" id="raceLine"></p>
+    <p class="livelink">
+      <a href="https://echappeebelle.v3.livetrail.net/fr/2026/runners/64?raceId=150km" target="_blank" rel="noopener">📍 Suivi live officiel — dossard 64</a>
+    </p>
+    <div class="totals">
+      <div class="total"><b id="totalTime">—</b><span>temps de course estimé</span></div>
+      <div class="total"><b id="finishClock">—</b><span>arrivée à Aiguebelle</span></div>
+      <div class="total"><b id="totalDist">—</b><span>distance / D+</span></div>
+      <div class="total"><b id="totalSplit">—</b><span>mouvement / arrêts</span></div>
+    </div>
+  </header>
+
+  <section class="card">
+    <h2>1 · Le scénario</h2>
+    <div class="row presets" id="presets"></div>
+    <div class="row inline">
+      <label>Heure de départ
+        <input type="time" id="startTime" value="06:00" autocomplete="off" />
+      </label>
+      <span class="note">Vague de 6h00 confirmée — à ne changer que si l'organisation décale.</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>2 · Le parcours</h2>
+    <p class="note">
+      Par mauvais temps l'organisation peut abaisser le parcours. Cochez ce qui est annoncé :
+      les horaires en aval se recalent.
+    </p>
+    <div id="shunts" class="shunts"></div>
+  </section>
+
+  <section class="card">
+    <h2>3 · Passages relevés</h2>
+    <p class="note">
+      Le moyen le plus fiable de savoir quand venir. Relevez mon heure sur le
+      <a href="https://echappeebelle.v3.livetrail.net/fr/2026/runners/64?raceId=150km" target="_blank" rel="noopener">suivi live officiel</a>
+      et ajoutez-la ici. <b>Ajoutez-en autant que vous en avez</b> : chaque tronçon entre deux
+      relevés cesse d'être une prévision, et la suite est projetée sur mon rythme récent.
+    </p>
+    <div class="row inline">
+      <label>Point
+        <select id="fitPoi" autocomplete="off"></select>
+      </label>
+      <label>Heure constatée
+        <input type="time" id="fitTime" autocomplete="off" />
+      </label>
+      <button id="fitApply" class="btn primary">Ajouter</button>
+      <button id="fitClear" class="btn">Tout effacer</button>
+    </div>
+    <ul id="obsList" class="obs"></ul>
+    <p id="fitOut" class="fitout"></p>
+  </section>
+
+  <section class="card">
+    <h2>4 · Où il est, à l'heure que vous voulez</h2>
+    <div class="maprow">
+      <label>Heure
+        <input type="time" id="posTime" autocomplete="off" />
+      </label>
+      <button id="posNow" class="btn">Maintenant</button>
+      <input type="range" id="posSlider" min="0" max="1000" value="0" autocomplete="off" aria-label="Heure sur la course" />
+      <span class="now" id="posElapsed">—</span>
+    </div>
+    <p class="where" id="posWhere">—</p>
+    <div id="map"></div>
+    <p class="note">
+      Position <b>estimée</b> par le simulateur, pas un suivi GPS : elle vaut ce que vaut le
+      scénario ci-dessus. Recalez-vous au §3 dès que vous avez un passage réel et la carte suit.
+      Le fond de carte a besoin d'internet ; le reste de la page fonctionne hors ligne.
+    </p>
+  </section>
+
+  <section class="card">
+    <h2>5 · Les horaires</h2>
+    <div class="scrollx">
+      <table id="splits">
+        <thead>
+          <tr>
+            <th>km</th><th>Point</th><th class="r">alt</th>
+            <th>heure estimée</th><th class="r">écart</th><th>accès accompagnateurs</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="note" id="splitsNote"></p>
+  </section>
+
+  <section class="card">
+    <h2>6 · Le profil</h2>
+    <div class="scrollx"><div id="profile"></div></div>
+    <p class="note">
+      Bandes grises = nuit (coucher <span id="sunset">—</span>, lever <span id="sunrise">—</span>).
+      Les points blancs sont les ravitaillements, les verts ceux où vous pouvez venir, et le
+      trait vert la position estimée réglée au §4.
+    </p>
+  </section>
+
+  <section class="card">
+    <h2>7 · Les curseurs</h2>
+    <p class="note">
+      Réglés par défaut sur mes valeurs réelles. Il n'y a normalement rien à toucher —
+      c'est là pour tester « et s'il ralentit de 10 % ? ».
+    </p>
+    <div id="knobs" class="knobs"></div>
+    <p class="note">
+      Le simulateur découpe le parcours en petits segments et calcule le temps de chacun
+      selon sa pente : au-delà d'un certain pourcentage on ne court plus, on marche, et
+      c'est alors la <b>vitesse verticale</b> qui décide. En dessous on court, d'autant
+      moins vite que ça monte. Les descentes redonnent de la vitesse, jusqu'à devenir
+      techniques. Le tout ralentit avec les heures (la <b>dérive</b>), se pénalise sur le
+      terrain difficile, et s'additionne au temps passé aux ravitaillements.
+    </p>
+  </section>
+
+  <footer class="foot">
+    <p>
+      Modèle volontairement simple : pente, marche au-delà d'un seuil de raideur, vitesse
+      verticale, dérive de fatigue, arrêts aux ravitaillements, plus un facteur de terrain
+      appris sur 16 traces d'anciennes éditions. <b>Il ne connaît ni la météo, ni la nuit,
+      ni un imprévu.</b> Ce sont des estimations, pas des promesses : recalez-vous sur un
+      passage réel dès que vous en avez un.
+    </p>
+    <p>
+      Les km affichés sont les km <b>officiels</b> du roadbook (149,7 km) ; le calcul tourne
+      sur la trace GPS (147,4 km), 1,5 % plus courte. Aucune conséquence sur les heures.
+    </p>
+    <p class="dim">
+      Page autonome : tout le calcul se fait dans votre navigateur, rien n'est envoyé nulle
+      part. Seul le fond de carte se télécharge. Vos réglages sont retenus sur cet appareil
+      jusqu'à ce que vous cliquiez « Réinitialiser ». Données générées le
+      <span id="gen">—</span>.
+    </p>
+  </footer>
+
+</div>
+<script src="vendor/leaflet.js"></script>
+<script src="data.js"></script>
+<script src="sim.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
