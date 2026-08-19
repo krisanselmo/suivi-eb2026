@@ -71,7 +71,10 @@ function persist() {
     try {
       localStorage.setItem(LS_KEY, JSON.stringify({
         params: state.params, shunts: state.shunts, start: state.start,
-        scale: state.scale, obs: state.obs, posSec: state.posSec, preset: state.preset,
+        scale: state.scale, obs: state.obs, preset: state.preset,
+        // posSec is deliberately NOT stored: the map must open on the current time every
+        // load. Persisting it meant a refresh on race morning restored last night's
+        // position instead of "now".
       }));
     } catch (e) { /* private browsing, quota — the page still works, just forgets */ }
   }, 250);
@@ -111,10 +114,6 @@ function restore() {
   if (Number.isFinite(v.scale) && v.scale > 0.2 && v.scale < 4) {
     state.scale = v.scale;
     got.scale = true;
-  }
-  if (Number.isFinite(v.posSec) && v.posSec >= 0) {
-    state.posSec = v.posSec;
-    got.posSec = true;
   }
   if (typeof v.preset === "string" || v.preset === null) got.preset = v.preset;
 
@@ -307,13 +306,19 @@ function render() {
   renderShuntEffects();
 }
 
-/** Where the map opens: the real clock if the race is running, the start otherwise. */
+/**
+ * Where the map opens: the real clock, clamped to the race.
+ *
+ * Before the start it sits on Vizille, during the race on the current time, after the
+ * finish on the arrival — never back at the start, which would read as "he has not left".
+ */
 function defaultPosSec(total) {
   const now = new Date();
   const start = new Date(D.race.date + "T00:00:00");
   start.setSeconds(state.start);
   const el = (now - start) / 1000;
-  return el > 0 && el < total ? el : 0;
+  if (el <= 0) return 0;
+  return Math.min(el, total);
 }
 
 function renderSplits(rows, res) {
@@ -477,6 +482,7 @@ function renderMap(course, res, rows) {
   if (!M.map) {
     M.map = L.map(host, { scrollWheelZoom: false, zoomSnap: 0, zoomDelta: 0.5 });
     L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
+      subdomains: "a",
       maxZoom: 17,
       attribution: '&copy; <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA) '
         + '&middot; &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
@@ -896,6 +902,101 @@ function renderFitSummary(obs, fit, res) {
         : "");
 }
 
+/* ---------- progressive web app ---------- */
+
+const TILE_URL = (z, x, y) => `https://a.tile.opentopomap.org/${z}/${x}/${y}.png`;
+const TILE_ZOOMS = [9, 10, 11, 12, 13];  // 443 tuiles, ~10 Mo ; z14 en ajouterait 29 Mo
+
+function tileRange(z, lat1, lon1, lat2, lon2) {
+  const n = 2 ** z;
+  const xOf = (lon) => Math.floor(((lon + 180) / 360) * n);
+  const yOf = (lat) => {
+    const r = (lat * Math.PI) / 180;
+    return Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * n);
+  };
+  const xs = [xOf(lon1), xOf(lon2)].sort((a, b) => a - b);
+  const ys = [yOf(lat1), yOf(lat2)].sort((a, b) => a - b);
+  const out = [];
+  for (let x = xs[0] - 1; x <= xs[1] + 1; x++) {
+    for (let y = ys[0] - 1; y <= ys[1] + 1; y++) {
+      if (x >= 0 && y >= 0 && x < n && y < n) out.push([z, x, y]);
+    }
+  }
+  return out;
+}
+
+/**
+ * Pull the course's tiles into the cache the service worker reads.
+ *
+ * Written from the page rather than through a worker message: the Cache API is available
+ * here too, so the same cache is filled with far less plumbing. Six at a time — the tiles
+ * are a courtesy from OpenTopoMap, not an entitlement.
+ */
+async function grabTiles() {
+  const out = document.getElementById("tilesOut");
+  const btn = document.getElementById("tilesGrab");
+  if (!("caches" in window)) {
+    out.textContent = "Ce navigateur ne sait pas mettre la carte en cache.";
+    return;
+  }
+  const lats = D.course.map((p) => p[1]);
+  const lons = D.course.map((p) => p[2]);
+  const box = [Math.min(...lats), Math.min(...lons), Math.max(...lats), Math.max(...lons)];
+  const jobs = TILE_ZOOMS.flatMap((z) => tileRange(z, ...box));
+
+  btn.disabled = true;
+  let done = 0, failed = 0;
+  const cache = await caches.open("eb-tiles");
+  const tick = () => {
+    out.textContent = `${done}/${jobs.length} tuiles` + (failed ? ` · ${failed} échouées` : "");
+  };
+  tick();
+  const queue = jobs.slice();
+  const worker = async () => {
+    while (queue.length) {
+      const [z, x, y] = queue.shift();
+      const url = TILE_URL(z, x, y);
+      try {
+        if (!(await cache.match(url))) {
+          const res = await fetch(url, { mode: "no-cors" });
+          await cache.put(url, res);
+        }
+      } catch (e) { failed++; }
+      done++;
+      if (done % 5 === 0 || !queue.length) tick();
+    }
+  };
+  await Promise.all(Array.from({ length: 6 }, worker));
+  out.textContent = failed
+    ? `${done - failed} tuiles en cache, ${failed} échouées — relancer une fois en réseau.`
+    : `${done} tuiles en cache : la carte s'affichera sans réseau.`;
+  btn.disabled = false;
+}
+
+function bootPwa() {
+  const btn = document.getElementById("tilesGrab");
+  if (btn) btn.addEventListener("click", grabTiles);
+
+  if (!("serviceWorker" in navigator)) return;
+  navigator.serviceWorker.register("sw.js").catch(() => {
+    /* http:// or a browser without SW — the page works, just not offline */
+  });
+
+  // The worker calls skipWaiting()/clients.claim(), so a new version installs on its own and
+  // a plain reload is enough to get it. The one case that needs a prompt is a page left OPEN
+  // across a deploy: it keeps running the old JS against the new cache. `controllerchange`
+  // fires exactly then. Offering the reload rather than forcing it is deliberate — a page
+  // that reloads itself while someone types a passage time at 3am is worse than a stale one.
+  let seenController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (!seenController) { seenController = true; return; }  // first-ever install, not an update
+    const banner = document.getElementById("swBanner");
+    if (!banner) return;
+    banner.hidden = false;
+    document.getElementById("swReload").onclick = () => location.reload();
+  });
+}
+
 /* ---------- boot ---------- */
 
 function boot() {
@@ -943,6 +1044,7 @@ function boot() {
   }
   markPreset();
   render();
+  bootPwa();
 }
 
 boot();
