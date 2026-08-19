@@ -978,27 +978,23 @@ function bootPwa() {
   if (btn) btn.addEventListener("click", grabTiles);
 
   if (!("serviceWorker" in navigator)) return;
-  navigator.serviceWorker.register("sw.js").then((reg) => {
-    // Offer the reload instead of forcing it: a page that reloads itself while someone is
-    // typing a passage time at 3am is worse than a stale page.
-    const offer = (worker) => {
-      const banner = document.getElementById("swBanner");
-      if (!banner) return;
-      banner.hidden = false;
-      document.getElementById("swReload").onclick = () => {
-        worker.postMessage("SKIP_WAITING");
-        location.reload();
-      };
-    };
-    if (reg.waiting) offer(reg.waiting);
-    reg.addEventListener("updatefound", () => {
-      const w = reg.installing;
-      if (!w) return;
-      w.addEventListener("statechange", () => {
-        if (w.state === "installed" && navigator.serviceWorker.controller) offer(w);
-      });
-    });
-  }).catch(() => { /* http:// or a browser without SW — the page works, just not offline */ });
+  navigator.serviceWorker.register("sw.js").catch(() => {
+    /* http:// or a browser without SW — the page works, just not offline */
+  });
+
+  // The worker calls skipWaiting()/clients.claim(), so a new version installs on its own and
+  // a plain reload is enough to get it. The one case that needs a prompt is a page left OPEN
+  // across a deploy: it keeps running the old JS against the new cache. `controllerchange`
+  // fires exactly then. Offering the reload rather than forcing it is deliberate — a page
+  // that reloads itself while someone types a passage time at 3am is worse than a stale one.
+  let seenController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (!seenController) { seenController = true; return; }  // first-ever install, not an update
+    const banner = document.getElementById("swBanner");
+    if (!banner) return;
+    banner.hidden = false;
+    document.getElementById("swReload").onclick = () => location.reload();
+  });
 }
 
 /* ---------- boot ---------- */

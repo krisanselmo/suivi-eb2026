@@ -8,7 +8,7 @@
  * Bump VERSION on every deploy. `scripts/publish_crew.sh` does it from the data stamp.
  */
 
-const VERSION = "2026-08-19a";
+const VERSION = "2026-08-19c";
 const SHELL = `eb-shell-${VERSION}`;
 const TILES = "eb-tiles";
 const TILE_CAP = 900; // ~20 MB; the whole course at z9-13 is 443 tiles
@@ -27,6 +27,10 @@ const SHELL_FILES = [
   "./icons/icon-512.png",
   "./icons/maskable-512.png",
   "./icons/apple-touch-icon.png",
+  "./icons/favicon-16.png",
+  "./icons/favicon-32.png",
+  "./icons/favicon-48.png",
+  "./favicon.ico",
 ];
 
 const isTile = (url) => url.hostname.endsWith("tile.opentopomap.org");
