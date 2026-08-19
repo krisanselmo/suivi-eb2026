@@ -71,7 +71,10 @@ function persist() {
     try {
       localStorage.setItem(LS_KEY, JSON.stringify({
         params: state.params, shunts: state.shunts, start: state.start,
-        scale: state.scale, obs: state.obs, posSec: state.posSec, preset: state.preset,
+        scale: state.scale, obs: state.obs, preset: state.preset,
+        // posSec is deliberately NOT stored: the map must open on the current time every
+        // load. Persisting it meant a refresh on race morning restored last night's
+        // position instead of "now".
       }));
     } catch (e) { /* private browsing, quota — the page still works, just forgets */ }
   }, 250);
@@ -111,10 +114,6 @@ function restore() {
   if (Number.isFinite(v.scale) && v.scale > 0.2 && v.scale < 4) {
     state.scale = v.scale;
     got.scale = true;
-  }
-  if (Number.isFinite(v.posSec) && v.posSec >= 0) {
-    state.posSec = v.posSec;
-    got.posSec = true;
   }
   if (typeof v.preset === "string" || v.preset === null) got.preset = v.preset;
 
@@ -307,13 +306,19 @@ function render() {
   renderShuntEffects();
 }
 
-/** Where the map opens: the real clock if the race is running, the start otherwise. */
+/**
+ * Where the map opens: the real clock, clamped to the race.
+ *
+ * Before the start it sits on Vizille, during the race on the current time, after the
+ * finish on the arrival — never back at the start, which would read as "he has not left".
+ */
 function defaultPosSec(total) {
   const now = new Date();
   const start = new Date(D.race.date + "T00:00:00");
   start.setSeconds(state.start);
   const el = (now - start) / 1000;
-  return el > 0 && el < total ? el : 0;
+  if (el <= 0) return 0;
+  return Math.min(el, total);
 }
 
 function renderSplits(rows, res) {
