@@ -191,6 +191,7 @@ tr.crew .clock { color: var(--accent); font-size: 1.05rem; }
   display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px;
   background: var(--accent); color: #fff; padding: 10px 16px; font-size: 0.87rem;
 }
+.swbanner[hidden] { display: none; }
 .swbanner .btn { border-color: #fff; background: transparent; color: #fff; }
 .swbanner .btn:hover { background: rgba(255, 255, 255, 0.15); color: #fff; }
 .offline { margin-top: 0; margin-bottom: 12px; }
