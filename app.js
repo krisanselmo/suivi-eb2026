@@ -981,20 +981,39 @@ function bootPwa() {
   navigator.serviceWorker.register("sw.js").catch(() => {
     /* http:// or a browser without SW — the page works, just not offline */
   });
+  watchForStaleTab();
+}
 
-  // The worker calls skipWaiting()/clients.claim(), so a new version installs on its own and
-  // a plain reload is enough to get it. The one case that needs a prompt is a page left OPEN
-  // across a deploy: it keeps running the old JS against the new cache. `controllerchange`
-  // fires exactly then. Offering the reload rather than forcing it is deliberate — a page
-  // that reloads itself while someone types a passage time at 3am is worse than a stale one.
-  let seenController = !!navigator.serviceWorker.controller;
-  navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (!seenController) { seenController = true; return; }  // first-ever install, not an update
+/**
+ * Offer a reload only when the tab is provably stale.
+ *
+ * The first attempt inferred it from `controllerchange` and cried wolf on a first visit —
+ * there is no "new version" when you have never loaded the page. So ask the worker which
+ * build it is and compare with the build this JS was shipped with: `data.js` and `sw.js`
+ * carry the same stamp, written together by build_crew.py. A mismatch means the worker has
+ * moved on and this tab is running yesterday's code — the only case worth interrupting for.
+ */
+function watchForStaleTab() {
+  const ask = (worker) => new Promise((resolve) => {
+    if (!worker) return resolve(null);
+    const ch = new MessageChannel();
+    const t = setTimeout(() => resolve(null), 2000);
+    ch.port1.onmessage = (e) => { clearTimeout(t); resolve(e.data); };
+    try { worker.postMessage({ type: "VERSION" }, [ch.port2]); } catch (_) { resolve(null); }
+  });
+
+  const check = async () => {
+    const v = await ask(navigator.serviceWorker.controller);
+    if (!v || !D.build || v === D.build) return;
     const banner = document.getElementById("swBanner");
     if (!banner) return;
     banner.hidden = false;
     document.getElementById("swReload").onclick = () => location.reload();
-  });
+  };
+
+  navigator.serviceWorker.ready.then(check);
+  // a deploy while the tab is open swaps the controller; re-check then, do not assume
+  navigator.serviceWorker.addEventListener("controllerchange", check);
 }
 
 /* ---------- boot ---------- */

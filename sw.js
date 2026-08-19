@@ -5,10 +5,12 @@
  *   - the map tiles are not versioned at all, because a tile does not change and
  *     re-downloading 10 MB of them on each deploy would be absurd.
  *
- * Bump VERSION on every deploy. `scripts/publish_crew.sh` does it from the data stamp.
+ * VERSION is written by scripts/build_crew.py, from the same stamp it puts in data.js. The
+ * page compares the two: if the worker is newer than the JS running, the tab is stale and a
+ * reload is offered. Never edit it by hand — a mismatch is what raises the banner.
  */
 
-const VERSION = "2026-08-19c";
+const VERSION = "2026-08-19T1741";  // BUILD_STAMP
 const SHELL = `eb-shell-${VERSION}`;
 const TILES = "eb-tiles";
 const TILE_CAP = 900; // ~20 MB; the whole course at z9-13 is 443 tiles
@@ -104,5 +106,8 @@ self.addEventListener("fetch", (e) => {
 });
 
 self.addEventListener("message", (e) => {
-  if (e.data === "SKIP_WAITING") self.skipWaiting();
+  if (e.data === "SKIP_WAITING") { self.skipWaiting(); return; }
+  if (e.data && e.data.type === "VERSION" && e.ports && e.ports[0]) {
+    e.ports[0].postMessage(VERSION);
+  }
 });
