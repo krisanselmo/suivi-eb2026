@@ -482,6 +482,7 @@ function renderMap(course, res, rows) {
   if (!M.map) {
     M.map = L.map(host, { scrollWheelZoom: false, zoomSnap: 0, zoomDelta: 0.5 });
     L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
+      subdomains: "a",
       maxZoom: 17,
       attribution: '&copy; <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA) '
         + '&middot; &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
@@ -901,6 +902,105 @@ function renderFitSummary(obs, fit, res) {
         : "");
 }
 
+/* ---------- progressive web app ---------- */
+
+const TILE_URL = (z, x, y) => `https://a.tile.opentopomap.org/${z}/${x}/${y}.png`;
+const TILE_ZOOMS = [9, 10, 11, 12, 13];  // 443 tuiles, ~10 Mo ; z14 en ajouterait 29 Mo
+
+function tileRange(z, lat1, lon1, lat2, lon2) {
+  const n = 2 ** z;
+  const xOf = (lon) => Math.floor(((lon + 180) / 360) * n);
+  const yOf = (lat) => {
+    const r = (lat * Math.PI) / 180;
+    return Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * n);
+  };
+  const xs = [xOf(lon1), xOf(lon2)].sort((a, b) => a - b);
+  const ys = [yOf(lat1), yOf(lat2)].sort((a, b) => a - b);
+  const out = [];
+  for (let x = xs[0] - 1; x <= xs[1] + 1; x++) {
+    for (let y = ys[0] - 1; y <= ys[1] + 1; y++) {
+      if (x >= 0 && y >= 0 && x < n && y < n) out.push([z, x, y]);
+    }
+  }
+  return out;
+}
+
+/**
+ * Pull the course's tiles into the cache the service worker reads.
+ *
+ * Written from the page rather than through a worker message: the Cache API is available
+ * here too, so the same cache is filled with far less plumbing. Six at a time — the tiles
+ * are a courtesy from OpenTopoMap, not an entitlement.
+ */
+async function grabTiles() {
+  const out = document.getElementById("tilesOut");
+  const btn = document.getElementById("tilesGrab");
+  if (!("caches" in window)) {
+    out.textContent = "Ce navigateur ne sait pas mettre la carte en cache.";
+    return;
+  }
+  const lats = D.course.map((p) => p[1]);
+  const lons = D.course.map((p) => p[2]);
+  const box = [Math.min(...lats), Math.min(...lons), Math.max(...lats), Math.max(...lons)];
+  const jobs = TILE_ZOOMS.flatMap((z) => tileRange(z, ...box));
+
+  btn.disabled = true;
+  let done = 0, failed = 0;
+  const cache = await caches.open("eb-tiles");
+  const tick = () => {
+    out.textContent = `${done}/${jobs.length} tuiles` + (failed ? ` · ${failed} échouées` : "");
+  };
+  tick();
+  const queue = jobs.slice();
+  const worker = async () => {
+    while (queue.length) {
+      const [z, x, y] = queue.shift();
+      const url = TILE_URL(z, x, y);
+      try {
+        if (!(await cache.match(url))) {
+          const res = await fetch(url, { mode: "no-cors" });
+          await cache.put(url, res);
+        }
+      } catch (e) { failed++; }
+      done++;
+      if (done % 5 === 0 || !queue.length) tick();
+    }
+  };
+  await Promise.all(Array.from({ length: 6 }, worker));
+  out.textContent = failed
+    ? `${done - failed} tuiles en cache, ${failed} échouées — relancer une fois en réseau.`
+    : `${done} tuiles en cache : la carte s'affichera sans réseau.`;
+  btn.disabled = false;
+}
+
+function bootPwa() {
+  const btn = document.getElementById("tilesGrab");
+  if (btn) btn.addEventListener("click", grabTiles);
+
+  if (!("serviceWorker" in navigator)) return;
+  navigator.serviceWorker.register("sw.js").then((reg) => {
+    // Offer the reload instead of forcing it: a page that reloads itself while someone is
+    // typing a passage time at 3am is worse than a stale page.
+    const offer = (worker) => {
+      const banner = document.getElementById("swBanner");
+      if (!banner) return;
+      banner.hidden = false;
+      document.getElementById("swReload").onclick = () => {
+        worker.postMessage("SKIP_WAITING");
+        location.reload();
+      };
+    };
+    if (reg.waiting) offer(reg.waiting);
+    reg.addEventListener("updatefound", () => {
+      const w = reg.installing;
+      if (!w) return;
+      w.addEventListener("statechange", () => {
+        if (w.state === "installed" && navigator.serviceWorker.controller) offer(w);
+      });
+    });
+  }).catch(() => { /* http:// or a browser without SW — the page works, just not offline */ });
+}
+
 /* ---------- boot ---------- */
 
 function boot() {
@@ -948,6 +1048,7 @@ function boot() {
   }
   markPreset();
   render();
+  bootPwa();
 }
 
 boot();

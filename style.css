@@ -186,6 +186,17 @@ tr.crew .clock { color: var(--accent); font-size: 1.05rem; }
 /* an observed passage is a fact, not an estimate — give it the accent, filled */
 .pill.obs { background: var(--accent); color: #fff; border-color: var(--accent); }
 
+/* ---- pwa ---- */
+.swbanner {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px;
+  background: var(--accent); color: #fff; padding: 10px 16px; font-size: 0.87rem;
+}
+.swbanner .btn { border-color: #fff; background: transparent; color: #fff; }
+.swbanner .btn:hover { background: rgba(255, 255, 255, 0.15); color: #fff; }
+.offline { margin-top: 0; margin-bottom: 12px; }
+.offline .note { margin: 0; }
+.offline .btn:disabled { opacity: 0.55; cursor: default; }
+
 /* ---- map ---- */
 .maprow { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-bottom: 12px; }
 .maprow .now { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--ink); font-size: 0.95rem; }

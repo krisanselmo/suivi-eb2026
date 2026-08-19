@@ -6,10 +6,20 @@
 <title>Mes horaires de passage — Échappée Belle 2026</title>
 <meta name="description" content="Estimation des heures de passage de Christophe sur l'Échappée Belle Intégrale 2026, pour les accompagnateurs." />
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>⛰️</text></svg>" />
+<link rel="manifest" href="manifest.webmanifest" />
+<meta name="theme-color" content="#1f6b47" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="Horaires EB" />
 <link rel="stylesheet" href="vendor/leaflet.css" />
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+<div id="swBanner" class="swbanner" hidden>
+  <span>Une nouvelle version de la page est disponible.</span>
+  <button id="swReload" class="btn">Recharger</button>
+</div>
 <div class="wrap">
 
   <header class="head">
@@ -80,6 +90,10 @@
     </div>
     <p class="where" id="posWhere">—</p>
     <div id="map"></div>
+    <div class="row inline offline">
+      <button id="tilesGrab" class="btn">⤓ Mettre la carte en cache</button>
+      <span id="tilesOut" class="note"></span>
+    </div>
     <p class="note">
       S'ouvre sur <b>l'heure courante</b> à chaque chargement : le vendredi à 10h, un simple
       rafraîchissement vous met au bon endroit sans rien toucher.
@@ -145,8 +159,9 @@
       sur la trace GPS (147,4 km), 1,5 % plus courte. Aucune conséquence sur les heures.
     </p>
     <p class="dim">
-      Page autonome : tout le calcul se fait dans votre navigateur, rien n'est envoyé nulle
-      part. Seul le fond de carte se télécharge. Vos réglages sont retenus sur cet appareil
+      Installable : « Ajouter à l'écran d'accueil » depuis le menu du navigateur, et la page
+      s'ouvre comme une application, y compris sans réseau. Tout le calcul se fait dans votre
+      navigateur, rien n'est envoyé nulle part. Seul le fond de carte se télécharge. Vos réglages sont retenus sur cet appareil
       jusqu'à ce que vous cliquiez « Réinitialiser ». Données générées le
       <span id="gen">—</span>.
     </p>
