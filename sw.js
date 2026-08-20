@@ -10,7 +10,7 @@
  * reload is offered. Never edit it by hand — a mismatch is what raises the banner.
  */
 
-const VERSION = "2026-08-19T1804";  // BUILD_STAMP
+const VERSION = "2026-08-20T1145";  // BUILD_STAMP
 const SHELL = `eb-shell-${VERSION}`;
 const TILES = "eb-tiles";
 const TILE_CAP = 900; // ~20 MB; the whole course at z9-13 is 443 tiles
